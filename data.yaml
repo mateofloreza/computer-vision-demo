@@ -1,0 +1,6 @@
+train: /home/jovyan/computer-vision-demo/synthetic_badges_split/images/train
+val: /home/jovyan/computer-vision-demo/synthetic_badges_split/images/val
+test: /home/jovyan/computer-vision-demo/synthetic_badges_split/images/test
+
+nc: 3  # Number of classes
+names: ["name", "title", "company"]

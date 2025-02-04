@@ -1,0 +1,121 @@
+# PIPELINE DEFINITION
+# Name: synthetic-badge-dataset-pipeline
+# Description: A pipeline to generate synthetic badge datasets for object detection.
+# Inputs:
+#    image_count: int [Default: 100.0]
+#    output_dir: str [Default: '/mnt/data/synthetic_dataset']
+components:
+  comp-generate-synthetic-dataset:
+    executorLabel: exec-generate-synthetic-dataset
+    inputDefinitions:
+      parameters:
+        image_count:
+          parameterType: NUMBER_INTEGER
+        output_dir:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-generate-synthetic-dataset:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - generate_synthetic_dataset
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.7.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef generate_synthetic_dataset(image_count: int, output_dir: str):\n\
+          \    import os\n    from subprocess import check_call\n\n    check_call([\"\
+          pip\", \"install\", \"faker\", \"Pillow\"])\n    from faker import Faker\n\
+          \    from PIL import Image, ImageDraw, ImageFont\n\n    # Path setup (use\
+          \ the local output directory passed to the component)\n    images_dir =\
+          \ os.path.join(output_dir, \"images\")\n    annotations_dir = os.path.join(output_dir,\
+          \ \"annotations\")\n    os.makedirs(images_dir, exist_ok=True)\n    os.makedirs(annotations_dir,\
+          \ exist_ok=True)\n    def generate_badge(image_id: int, output_dir: str):\n\
+          \        # Badge template parameters\n        badge_width, badge_height\
+          \ = 400, 200  # Badge dimensions in pixels\n        font_size = 20\n   \
+          \     font_path = \"computer-vision-demo/Ubuntu-Bold.ttf\"  # Update with\
+          \ actual font file\n\n        # Output paths\n        images_dir = os.path.join(output_dir,\
+          \ \"images\")\n        annotations_dir = os.path.join(output_dir, \"annotations\"\
+          )\n\n        os.makedirs(images_dir, exist_ok=True)\n        os.makedirs(annotations_dir,\
+          \ exist_ok=True)\n\n        # Initialize Faker\n        faker = Faker()\n\
+          \n        # Create blank badge\n        badge = Image.new(\"RGB\", (badge_width,\
+          \ badge_height), (255, 255, 255))\n        draw = ImageDraw.Draw(badge)\n\
+          \        font = ImageFont.truetype(font_path, font_size)\n\n        # Generate\
+          \ random text\n        name = faker.name()\n        title = faker.job()\n\
+          \        company = faker.company()\n\n        # Define text positions\n\
+          \        name_pos = (20, 50)\n        title_pos = (20, 100)\n        company_pos\
+          \ = (20, 150)\n\n        # Draw text\n        draw.text(name_pos, name,\
+          \ font=font, fill=(0, 0, 0))\n        draw.text(title_pos, title, font=font,\
+          \ fill=(0, 0, 0))\n        draw.text(company_pos, company, font=font, fill=(0,\
+          \ 0, 0))\n\n        # Save image\n        image_path = os.path.join(images_dir,\
+          \ f\"badge_{image_id}.jpg\")\n        badge.save(image_path)\n\n       \
+          \ # Generate YOLO-style annotations\n        annotations = []\n        for\
+          \ i, (text, pos) in enumerate([(name, name_pos), (title, title_pos), (company,\
+          \ company_pos)]):\n            bbox = calculate_bbox(draw, font, pos, text)\n\
+          \            annotations.append(f\"{i} {bbox['x_center']} {bbox['y_center']}\
+          \ {bbox['width']} {bbox['height']}\")\n\n        # Save annotations\n  \
+          \      annotation_path = os.path.join(annotations_dir, f\"badge_{image_id}.txt\"\
+          )\n        with open(annotation_path, \"w\") as f:\n            f.write(\"\
+          \\n\".join(annotations))\n\n    # Helper to calculate bounding box\n   \
+          \ def calculate_bbox(draw, font, position, text):\n        text_width, text_height\
+          \ = draw.textsize(text, font=font)\n        x_min, y_min = position\n  \
+          \      x_max, y_max = x_min + text_width, y_min + text_height\n\n      \
+          \  # Normalize to YOLO format\n        x_center = (x_min + x_max) / 2 /\
+          \ badge_width\n        y_center = (y_min + y_max) / 2 / badge_height\n \
+          \       width = text_width / badge_width\n        height = text_height /\
+          \ badge_height\n\n        return {\n            \"x_center\": round(x_center,\
+          \ 6),\n            \"y_center\": round(y_center, 6),\n            \"width\"\
+          : round(width, 6),\n            \"height\": round(height, 6),\n        }\n\
+          \n    # Generate the dataset\n    for image_id in range(image_count):\n\
+          \        generate_badge(image_id, output_dir)\n\n    print(f\"Synthetic\
+          \ dataset created at {output_dir}\")\n\n"
+        image: python:3.7
+pipelineInfo:
+  description: A pipeline to generate synthetic badge datasets for object detection.
+  name: synthetic-badge-dataset-pipeline
+root:
+  dag:
+    tasks:
+      generate-synthetic-dataset:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-generate-synthetic-dataset
+        inputs:
+          parameters:
+            image_count:
+              componentInputParameter: image_count
+            output_dir:
+              componentInputParameter: output_dir
+        taskInfo:
+          name: generate-synthetic-dataset
+  inputDefinitions:
+    parameters:
+      image_count:
+        defaultValue: 100.0
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      output_dir:
+        defaultValue: /mnt/data/synthetic_dataset
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.7.0
